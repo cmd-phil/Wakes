@@ -10,6 +10,28 @@ cmake_minimum_required(VERSION 3.20.0)
 # every boot. check_image.py now also compares class layouts across objects.
 set(USE_CCACHE 0 CACHE STRING "Never ccache: it cannot see the Plaits header overrides" FORCE)
 
+# ---- config/audio.ini [usb] enabled -> CONFIG_SP1_USB_AUDIO ----
+# Read before Kconfig runs, because it decides whether the USB audio class is compiled in at
+# all. gen_audio.py validates the whole file here too, so a bad value fails at configure time.
+# An explicit -DCONFIG_SP1_USB_AUDIO=... on the command line still wins.
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+execute_process(
+	COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/../tools/gen_audio.py
+		--enabled ${CMAKE_CURRENT_SOURCE_DIR}/../config/audio.ini
+	OUTPUT_VARIABLE SP1_USB_AUDIO_FROM_INI
+	RESULT_VARIABLE sp1_audio_rc)
+if(NOT sp1_audio_rc EQUAL 0)
+	message(FATAL_ERROR "config/audio.ini is invalid (see above)")
+endif()
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+	${CMAKE_CURRENT_SOURCE_DIR}/../config/audio.ini)
+if(NOT DEFINED CACHE{CONFIG_SP1_USB_AUDIO} AND SP1_USB_AUDIO_FROM_INI STREQUAL "n")
+	set(SP1_USB_AUDIO_CONF ${CMAKE_CURRENT_BINARY_DIR}/sp1_usb_audio_off.conf)
+	file(WRITE ${SP1_USB_AUDIO_CONF} "# config/audio.ini: [usb] enabled = off\nCONFIG_SP1_USB_AUDIO=n\n")
+	list(APPEND EXTRA_CONF_FILE ${SP1_USB_AUDIO_CONF})
+	message(STATUS "config/audio.ini: USB audio out disabled")
+endif()
+
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(wakes-sp1)
 
